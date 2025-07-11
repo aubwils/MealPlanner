@@ -474,6 +474,29 @@
             line-height: 1.2;
         }
 
+        /* Save status notification */
+        .save-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            background: #28a745;
+            color: white;
+            border-radius: 5px;
+            font-weight: 600;
+            z-index: 1000;
+            transform: translateX(100%);
+            transition: transform 0.3s ease;
+        }
+
+        .save-status.show {
+            transform: translateX(0);
+        }
+
+        .save-status.error {
+            background: #dc3545;
+        }
+
         @media (max-width: 768px) {
             .container {
                 padding: 10px;
@@ -530,6 +553,9 @@
     </style>
 </head>
 <body>
+    <!-- Save status notification -->
+    <div class="save-status" id="saveStatus"></div>
+
     <div class="container">
         <div class="header">
             <h1>🍽️ Calorie & Meal Planner</h1>
@@ -716,7 +742,7 @@
     </div>
 
     <script>
-        // Data storage
+        // Data storage with persistent saving
         let foods = [];
         let mealPlans = {};
         let dailyTargets = {};
@@ -727,20 +753,96 @@
         let currentWeek = new Date();
         let currentMonth = new Date();
 
-        // Initialize with sample foods
-        foods = [
-            { name: 'Grilled Chicken Breast', calories: 185, category: 'Main Dish' },
-            { name: 'Brown Rice (1 cup)', calories: 220, category: 'Side Dish' },
-            { name: 'Steamed Broccoli', calories: 25, category: 'Side Dish' },
-            { name: 'Greek Yogurt', calories: 130, category: 'Snack' },
-            { name: 'Apple', calories: 95, category: 'Snack' },
-            { name: 'Oatmeal', calories: 150, category: 'Main Dish' },
-            { name: 'Salmon Fillet', calories: 250, category: 'Main Dish' },
-            { name: 'Sweet Potato', calories: 112, category: 'Side Dish' }
-        ];
+        // Storage functions with error handling
+        function saveData() {
+            try {
+                const data = {
+                    foods: foods,
+                    mealPlans: mealPlans,
+                    dailyTargets: dailyTargets,
+                    weeklyGoalWeights: weeklyGoalWeights,
+                    dailyWeights: dailyWeights,
+                    exerciseData: exerciseData
+                };
+                
+                const jsonData = JSON.stringify(data);
+                localStorage.setItem('mealPlannerData', jsonData);
+                showSaveStatus('Data saved successfully!', 'success');
+                return true;
+            } catch (error) {
+                console.error('Error saving to localStorage:', error);
+                try {
+                    // Fallback to sessionStorage
+                    const data = {
+                        foods: foods,
+                        mealPlans: mealPlans,
+                        dailyTargets: dailyTargets,
+                        weeklyGoalWeights: weeklyGoalWeights,
+                        dailyWeights: dailyWeights,
+                        exerciseData: exerciseData
+                    };
+                    sessionStorage.setItem('mealPlannerData', JSON.stringify(data));
+                    showSaveStatus('Saved to session (temporary)', 'error');
+                    return true;
+                } catch (sessionError) {
+                    console.error('Error saving to sessionStorage:', sessionError);
+                    showSaveStatus('Warning: Unable to save data!', 'error');
+                    return false;
+                }
+            }
+        }
+
+        function loadData() {
+            try {
+                const data = localStorage.getItem('mealPlannerData') || sessionStorage.getItem('mealPlannerData');
+                if (data) {
+                    const parsedData = JSON.parse(data);
+                    foods = parsedData.foods || getDefaultFoods();
+                    mealPlans = parsedData.mealPlans || {};
+                    dailyTargets = parsedData.dailyTargets || {};
+                    weeklyGoalWeights = parsedData.weeklyGoalWeights || {};
+                    dailyWeights = parsedData.dailyWeights || {};
+                    exerciseData = parsedData.exerciseData || {};
+                    console.log('Data loaded successfully');
+                } else {
+                    // Initialize with default foods
+                    foods = getDefaultFoods();
+                    saveData();
+                }
+            } catch (error) {
+                console.error('Error loading data:', error);
+                foods = getDefaultFoods();
+                showSaveStatus('Error loading saved data, using defaults', 'error');
+            }
+        }
+
+        function getDefaultFoods() {
+            return [
+                { name: 'Grilled Chicken Breast', calories: 185, category: 'Main Dish' },
+                { name: 'Brown Rice (1 cup)', calories: 220, category: 'Side Dish' },
+                { name: 'Steamed Broccoli', calories: 25, category: 'Side Dish' },
+                { name: 'Greek Yogurt', calories: 130, category: 'Snack' },
+                { name: 'Apple', calories: 95, category: 'Snack' },
+                { name: 'Oatmeal', calories: 150, category: 'Main Dish' },
+                { name: 'Salmon Fillet', calories: 250, category: 'Main Dish' },
+                { name: 'Sweet Potato', calories: 112, category: 'Side Dish' }
+            ];
+        }
+
+        function showSaveStatus(message, type = 'success') {
+            const status = document.getElementById('saveStatus');
+            status.textContent = message;
+            status.className = `save-status ${type}`;
+            status.classList.add('show');
+            
+            setTimeout(() => {
+                status.classList.remove('show');
+            }, 3000);
+        }
 
         // Initialize the app
         document.addEventListener('DOMContentLoaded', function() {
+            loadData();
             updateFoodList();
             updateFoodSelects();
             updateCurrentDate();
@@ -788,6 +890,7 @@
                 foods.push({ name, calories, category });
                 updateFoodList();
                 updateFoodSelects();
+                saveData(); // Save after adding food
                 
                 document.getElementById('foodName').value = '';
                 document.getElementById('foodCalories').value = '';
@@ -795,9 +898,12 @@
         }
 
         function deleteFood(index) {
-            foods.splice(index, 1);
-            updateFoodList();
-            updateFoodSelects();
+            if (confirm('Are you sure you want to delete this food item?')) {
+                foods.splice(index, 1);
+                updateFoodList();
+                updateFoodSelects();
+                saveData(); // Save after deleting food
+            }
         }
 
         function updateFoodList() {
@@ -864,6 +970,7 @@
             const target = parseInt(document.getElementById('dailyTarget').value) || 1200;
             dailyTargets[dateString] = target;
             updateDailySummary();
+            saveData(); // Save after updating target
         }
 
         function updateExercise() {
@@ -876,6 +983,7 @@
             }
             updateWeekView();
             updateMonthView();
+            saveData(); // Save after updating exercise
         }
 
         function updateExerciseCheckbox() {
@@ -897,6 +1005,7 @@
                 }
                 updateWeekView();
                 updateMonthView();
+                saveData(); // Save after updating goal weight
             }
         }
 
@@ -929,6 +1038,7 @@
                 }
                 updateWeekView();
                 updateMonthView();
+                saveData(); // Save after updating actual weight
             }
         }
 
@@ -1006,7 +1116,8 @@
                 mealPlans[todayString] = JSON.parse(JSON.stringify(mealPlans[yesterdayString]));
                 updateDailyView();
                 updateDailySummary();
-                alert(`Copied meals from ${yesterday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} to today!`);
+                saveData(); // Save after copying meals
+                showSaveStatus(`Copied meals from ${yesterday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} to today!`, 'success');
             } else {
                 alert('No meals found for yesterday to copy.');
             }
@@ -1033,6 +1144,7 @@
                 mealPlans[dateString][mealType].push(foods[foodIndex]);
                 updateDailyView();
                 updateDailySummary();
+                saveData(); // Save after adding food to meal
                 select.value = '';
             }
         }
@@ -1043,6 +1155,7 @@
                 mealPlans[dateString][mealType].splice(foodIndex, 1);
                 updateDailyView();
                 updateDailySummary();
+                saveData(); // Save after removing food from meal
             }
         }
 
